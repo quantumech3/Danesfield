@@ -33,6 +33,8 @@ from kwiver.arrows.core import mesh_triangulate
 
 from kwiver.vital.modules import load_known_modules
 
+import os # TODO remove this
+
 mtl_template = ("newmtl mat\n"
                 "Ka 1.0 1.0 1.0\n"
                 "Kd 1.0 1.0 1.0\n"
@@ -120,25 +122,34 @@ class pointCloudTextureMapper(object):
         img_dx = 1./img_size[0]
         img_dy = 1./img_size[1]
 
+        # mesh.texture_map() gets the corrosponding uv coordinate given a triangle in xyz, and barycentric coordinates of that point
+        # tx_coords is the uv coordinates for each vertex of each triangle.
+        # This iterates over each face and gets the closest points to each point on it 
         for i in range(mesh.num_faces()):
             x_min = y_min = 1.
             x_max = y_max = 0.
+            # Get vertices of triangle in uv space  (1) 
             tx_coords = [mesh.texture_map(i, u, v)
                          for (u,v) in [(0,1), (1,0), (0,0)]]
+            
+            # Get the bounding box for the triangle in uv space (2)
             for tmp_crds in tx_coords:
                 x_min = min(tmp_crds[0], x_min)
                 y_min = min(tmp_crds[1], y_min)
                 x_max = max(tmp_crds[0], x_max)
                 y_max = max(tmp_crds[1], y_max)
-
+            
+            # get the xyz coordinates of the triangle vertices (3)
             indices = faces[i]
             corners = np.array([vertices[idx] for idx in indices])
             if tri_area(corners) <= 0. or np.isnan([x_min, x_max, y_min, y_max]).any():
                 continue
-
+            
+            # (4) Get all of the points inside the bounding box from (2) and map them to xyz on the surface of the mesh
+            # pixel_points is a list of all points within the bounding box from (2) in xyz
+            # pixel_indices contains the uv coordinates for each point corrospoding to pixel_points
             pixel_points = []
             pixel_indices = []
-
             for x in np.arange(x_min, x_max + img_dx, img_dx):
                 for y in np.arange(y_min, y_max + img_dy, img_dy):
                     (u,v) = barycentric([x, y], tx_coords[0], tx_coords[1], tx_coords[2])
@@ -150,8 +161,8 @@ class pointCloudTextureMapper(object):
                         pixel_indices.append([int((1. - y)*img_size[1]),
                                               int(x*img_size[0])])
 
+            # Get the closest points to each point on the surface of the mesh within the bounding box in (2)
             distances, closest_indices = self.search_tree.query(pixel_points)
-
 
             for idx, (px, ci, dist) in enumerate(zip(pixel_indices, closest_indices, distances)):
                 if self.use_dist:
@@ -229,7 +240,14 @@ class pointCloudTextureMapper(object):
             if uv_area != np.array(0):
                 p = xyz_area / (uv_area * GSD)
                 ps = np.append(ps, p)
-        self.img_size = int(np.sqrt(np.max(ps)))
+
+        # Logging ratios for each triangle 
+        with open(f"{os.path.basename(meshfile)}.csv", "w+") as file:
+            file.write(",ratio\n")
+            for i, p in enumerate(ps):
+                file.write(f"{i},{p}\n")
+
+        self.img_size = int(np.sqrt(np.mean(ps)))
 
         # Cap image size at 8k for super large meshes
         self.img_size = min(MAX_TEX_SIZE, self.img_size)
@@ -349,7 +367,10 @@ def main(args):
     texMapper = pointCloudTextureMapper(points, output_dir, color_data, err_data, args.use_dist)
 
     for mf in mesh_files:
+        t1 = time()
         texMapper.process_mesh(mf)
+        t2 = time()
+        print(f"[PROFILER]: {os.path.basename(mf)} {t2 - t1}sec")
 
     print('Finished')
 
