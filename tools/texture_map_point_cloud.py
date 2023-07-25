@@ -216,7 +216,7 @@ class pointCloudTextureMapper(object):
         return 0.5 * np.linalg.norm(np.cross(v1, v2))
 
     def process_mesh(self, meshfile):
-        GSD = 0.5
+        GSD = 0.25
         MAX_TEX_SIZE = 8000
 
         self.img_size = (100, 100)
