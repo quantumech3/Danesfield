@@ -233,25 +233,25 @@ class pointCloudTextureMapper(object):
         verts = new_mesh.vertices()
         uvs = new_mesh.tex_coords()
         ps = np.array([], dtype=np.float64) # Number of pixels needed for each triangle
-        for f in new_mesh.faces():
+        for i, f in enumerate(new_mesh.faces()):
             xyz_area = pointCloudTextureMapper.triangle_area(verts[f[0]], verts[f[1]], verts[f[2]])
-            uv_area = pointCloudTextureMapper.triangle_area(uvs[f[0]], uvs[f[1]], uvs[f[2]])
+            uv_area = pointCloudTextureMapper.triangle_area(uvs[3*i], uvs[3*i + 1], uvs[3*i + 2])
 
             if uv_area != np.array(0):
                 p = xyz_area / (uv_area * GSD)
                 ps = np.append(ps, p)
 
         # Logging ratios for each triangle 
-        with open(f"{os.path.basename(meshfile)}.csv", "w+") as file:
-            file.write(",ratio\n")
-            for i, p in enumerate(ps):
-                file.write(f"{i},{p}\n")
-
-        self.img_size = int(np.sqrt(np.mean(ps)))
+        # with open(f"{os.path.basename(meshfile)}.csv", "w+") as file:
+        #     file.write(",ratio\n")
+        #     for i, p in enumerate(ps):
+        #         file.write(f"{i},{p}\n")
+        self.img_size = int(np.sqrt(np.median(ps)))
 
         # Cap image size at 8k for super large meshes
         self.img_size = min(MAX_TEX_SIZE, self.img_size)
         self.img_size = (self.img_size, self.img_size) 
+
 
         # Create the color texture image
         color_img = np.zeros(self.img_size + (3,), dtype=np.float32)
@@ -367,10 +367,10 @@ def main(args):
     texMapper = pointCloudTextureMapper(points, output_dir, color_data, err_data, args.use_dist)
 
     for mf in mesh_files:
-        t1 = time()
+        # t1 = time()
         texMapper.process_mesh(mf)
-        t2 = time()
-        print(f"[PROFILER]: {os.path.basename(mf)} {t2 - t1}sec")
+        # t2 = time()
+        # print(f"[PROFILER]: {os.path.basename(mf)} {t2 - t1}sec")
 
     print('Finished')
 
